@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Fuel Sensor Calibration</title>
+<style>
+  :root{
+    --bg:#0e1116; --card:#171c24; --line:#262d39; --ink:#e7edf5; --dim:#8a97a8;
+    --accent:#34c759; --accent2:#3a86ff; --warn:#ff9f0a; --danger:#ff453a;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  .wrap{max-width:520px;margin:0 auto;padding:18px 16px 40px}
+  h1{font-size:18px;font-weight:650;margin:6px 0 2px}
+  .sub{color:var(--dim);font-size:13px;margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;
+    padding:16px;margin-bottom:14px}
+  .live{display:flex;align-items:baseline;gap:10px;justify-content:center;
+    padding:10px 0 4px}
+  .live .val{font-size:54px;font-weight:700;letter-spacing:-1px;
+    font-variant-numeric:tabular-nums}
+  .live .unit{font-size:18px;color:var(--dim)}
+  .bar{height:10px;background:#0b0e13;border:1px solid var(--line);border-radius:6px;
+    overflow:hidden;margin:14px 2px 4px}
+  .bar > i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent2),var(--accent));
+    transition:width .25s}
+  .pct{text-align:center;color:var(--dim);font-size:13px;margin-top:6px}
+  .row{display:flex;gap:10px}
+  .row > *{flex:1}
+  button{appearance:none;border:0;border-radius:12px;padding:14px 12px;font-size:15px;
+    font-weight:600;color:#fff;background:#2a323d;cursor:pointer}
+  button:active{transform:translateY(1px)}
+  button:disabled{opacity:.4}
+  .b-conn{background:var(--accent2)}
+  .b-empty{background:#5b6573}
+  .b-full{background:#5b6573}
+  .b-save{background:var(--accent)}
+  .b-stop{background:#2a323d}
+  .set{display:flex;justify-content:space-between;font-size:14px;padding:7px 2px;
+    border-top:1px solid var(--line)}
+  .set:first-child{border-top:0}
+  .set b{font-variant-numeric:tabular-nums}
+  .muted{color:var(--dim)}
+  .log{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--dim);
+    background:#0b0e13;border:1px solid var(--line);border-radius:10px;padding:10px;
+    height:92px;overflow:auto;white-space:pre-wrap}
+  .hint{font-size:12px;color:var(--dim);line-height:1.5;margin-top:4px}
+  .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;
+    background:#2a323d;color:var(--dim);margin-left:8px;vertical-align:middle}
+  .pill.on{background:rgba(52,199,89,.18);color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Fuel Sensor Calibration <span id="st" class="pill">offline</span></h1>
+  <div class="sub">Power off the RX first &mdash; only one BLE link at a time.</div>
+
+  <div class="card">
+    <div class="live"><span class="val" id="cap">--</span><span class="unit">pF</span></div>
+    <div class="bar"><i id="fill"></i></div>
+    <div class="pct" id="pct">connect to begin</div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="margin-bottom:10px">
+      <button class="b-conn" id="btnConn">Connect</button>
+    </div>
+    <div class="row">
+      <button class="b-empty" id="btnEmpty" disabled>Set Empty<br><span class="muted" style="font-weight:400;font-size:12px">tank empty</span></button>
+      <button class="b-full" id="btnFull" disabled>Set Full<br><span class="muted" style="font-weight:400;font-size:12px">tank full</span></button>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="b-save" id="btnSave" disabled>Save &amp; Run</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="set"><span class="muted">Empty point</span><b id="vEmpty">--</b></div>
+    <div class="set"><span class="muted">Full point</span><b id="vFull">--</b></div>
+    <div class="hint">Empty the tank &rarr; <b>Set Empty</b>; fill it &rarr; <b>Set Full</b>. These two points become the 0&ndash;100% range the beacon reports.</div>
+  </div>
+
+  <div class="card">
+    <div class="set"><span class="muted">TX address (your record / RX bind)</span></div>
+    <input type="text" id="txaddr" placeholder="e.g. 11899AA3EDB7" autocomplete="off" style="width:100%">
+    <div class="set" style="margin-top:12px"><span class="muted">Connection password</span></div>
+    <input type="tel" id="txpin" maxlength="4" inputmode="numeric" placeholder="4 digits, e.g. 1234" style="width:100%">
+    <div class="hint">Optional. Locks the TX with a password + binding so only you can reconnect to recalibrate. Applied when you tap <b>Start Beacon</b>. This protects the <b>calibration connection</b> only &mdash; a scanning RX still reads the broadcast level without it.</div>
+  </div>
+
+  <div class="card">
+    <div class="set"><span class="muted">Beacon update interval</span><b><span id="intvLbl">60</span> s</b></div>
+    <input type="range" id="intv" min="20" max="300" step="10" value="60" style="width:100%">
+    <div class="hint">How often the in-tank unit wakes, measures, and broadcasts. Longer = longer battery life, slower updates. 20&ndash;300&nbsp;s.</div>
+    <div class="row" style="margin-top:12px">
+      <button class="b-save" id="btnBeacon" disabled>Save &amp; Start Beacon</button>
+    </div>
+  </div>
+
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+/* JDY-24M / HM-style serial BLE: service 0xFFE0, characteristic 0xFFE1 (notify+write) */
+const SVC = 0xffe0, CHR = 0xffe1;
+let dev, chr, buf = "";
+let lastEmpty = null, lastFull = null;
+
+const $ = id => document.getElementById(id);
+const log = m => { const l=$('log'); l.textContent += m+"\n"; l.scrollTop = l.scrollHeight; };
+const enc = new TextEncoder(), dec = new TextDecoder();
+
+function setOnline(on){
+  $('st').textContent = on ? "connected" : "offline";
+  $('st').className = "pill" + (on ? " on" : "");
+  $('btnConn').textContent = on ? "Disconnect" : "Connect";
+  for (const b of ['btnEmpty','btnFull','btnSave','btnBeacon']) $(b).disabled = !on;
+  if(!on){ $('cap').textContent="--"; $('pct').textContent="connect to begin"; $('fill').style.width="0"; }
+}
+
+async function send(s){
+  if(!chr) return;
+  await chr.writeValue(enc.encode(s + "\r\n"));
+  log("> " + s);
+}
+
+function showCap(cap01){               /* cap in 0.1 pF units */
+  const pf = cap01/10;
+  $('cap').textContent = pf.toFixed(1);
+  if(lastEmpty!=null && lastFull!=null && lastFull>lastEmpty){
+    let p = (cap01 - lastEmpty) / (lastFull - lastEmpty);
+    p = Math.max(0, Math.min(1, p));
+    $('fill').style.width = (p*100).toFixed(0)+"%";
+    $('pct').textContent = (p*100).toFixed(0)+"% of set range";
+  } else {
+    $('pct').textContent = "set empty & full points";
+  }
+}
+
+function onLine(line){
+  line = line.trim();
+  if(!line) return;
+  if(line[0]==='C'){                    /* "C<rawcap>"  live capacitance */
+    const n = parseInt(line.slice(1),10);
+    if(!isNaN(n)) showCap(n);
+  } else if(line[0]==='K'){             /* "K<empty>,<full>" stored points */
+    const m = line.slice(1).split(',');
+    lastEmpty = parseInt(m[0],10); lastFull = parseInt(m[1],10);
+    $('vEmpty').textContent = isNaN(lastEmpty)?"--":(lastEmpty/10).toFixed(1)+" pF";
+    $('vFull').textContent  = isNaN(lastFull) ?"--":(lastFull /10).toFixed(1)+" pF";
+    log("  stored: empty="+lastEmpty+" full="+lastFull);
+  }
+}
+
+function onData(ev){
+  buf += dec.decode(ev.target.value);
+  let i;
+  while((i = buf.search(/[\r\n]/)) >= 0){ onLine(buf.slice(0,i)); buf = buf.slice(i+1); }
+}
+
+async function connect(){
+  try{
+    log("requesting device…");
+    dev = await navigator.bluetooth.requestDevice({
+      filters:[{services:[SVC]}],
+      optionalServices:[SVC]
+    });
+    dev.addEventListener('gattserverdisconnected', ()=>{ setOnline(false); log("disconnected"); });
+    log("connecting…");
+    const srv = await dev.gatt.connect();
+    const s = await srv.getPrimaryService(SVC);
+    chr = await s.getCharacteristic(CHR);
+    await chr.startNotifications();
+    chr.addEventListener('characteristicvaluechanged', onData);
+    setOnline(true);
+    log("connected: " + (dev.name||"device"));
+    await send("CAL");                  /* enter calibration mode */
+    await send("G");                    /* fetch stored points */
+  }catch(e){ log("error: " + e.message); }
+}
+
+async function disconnect(){
+  try{ if(dev && dev.gatt.connected){ await send("RUN"); dev.gatt.disconnect(); } }catch(e){}
+  setOnline(false);
+}
+
+$('btnConn').onclick = ()=> (dev && dev.gatt && dev.gatt.connected) ? disconnect() : connect();
+$('btnEmpty').onclick = ()=> send("E");
+$('btnFull').onclick  = ()=> send("F");
+$('btnSave').onclick   = async ()=>{ await send("RUN"); log("saved — RX can be powered on"); };
+
+$('intv').oninput = ()=> $('intvLbl').textContent = $('intv').value;
+$('btnBeacon').onclick = async ()=>{
+  await send("I" + $('intv').value);               /* set interval (seconds) */
+  const pin = ($('txpin').value||"").replace(/\D/g,'').slice(0,4);
+  if(pin.length === 4){ await send("P" + pin); }   /* set password + binding */
+  await send("B");                                 /* switch to beacon mode  */
+  log("beacon started @ " + $('intv').value + " s"
+      + (pin.length===4 ? (", password set ("+pin+")") : "")
+      + " — you can disconnect");
+};
+
+if(!navigator.bluetooth){
+  log("Web Bluetooth not available. Use Chrome on Android, over https.");
+  $('btnConn').disabled = true;
+}
+</script>
+</body>
+</html>
