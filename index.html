@@ -164,7 +164,9 @@ async function connect(){
   try{
     log("requesting device…");
     dev = await navigator.bluetooth.requestDevice({
-      filters:[{services:[SVC]}],
+      /* JDY-24M advertises a NAME, not the FFE0 service UUID, so a service
+         filter hides it. Show all devices; pick FUEL000 / your module. */
+      acceptAllDevices:true,
       optionalServices:[SVC]
     });
     dev.addEventListener('gattserverdisconnected', ()=>{ setOnline(false); log("disconnected"); });
