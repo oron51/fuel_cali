@@ -142,6 +142,7 @@ function showCap(cap01){               /* cap in 0.1 pF units */
 function onLine(line){
   line = line.trim();
   if(!line) return;
+  log("\u00ab " + line);                 /* DEBUG: show every incoming line */
   if(line[0]==='C'){                    /* "C<rawcap>"  live capacitance */
     const n = parseInt(line.slice(1),10);
     if(!isNaN(n)) showCap(n);
