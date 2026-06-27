@@ -125,6 +125,7 @@ async function send(s){
   await chr.writeValue(enc.encode(s + "\r\n"));
   log("> " + s);
 }
+const wait = ms => new Promise(r=>setTimeout(r,ms));
 
 function showCap(cap01){               /* cap in 0.1 pF units */
   const pf = cap01/10;
@@ -179,7 +180,6 @@ async function connect(){
     chr.addEventListener('characteristicvaluechanged', onData);
     setOnline(true);
     log("connected: " + (dev.name||"device"));
-    await send("CAL");                  /* enter calibration mode */
     await send("G");                    /* fetch stored points */
   }catch(e){ log("error: " + e.message); }
 }
@@ -198,7 +198,8 @@ $('intv').oninput = ()=> $('intvLbl').textContent = $('intv').value;
 $('btnBeacon').onclick = async ()=>{
   await send("I" + $('intv').value);               /* set interval (seconds) */
   const pin = ($('txpin').value||"").replace(/\D/g,'').slice(0,4);
-  if(pin.length === 4){ await send("P" + pin); }   /* set password + binding */
+  if(pin.length === 4){ await wait(350); await send("P" + pin); }
+  await wait(350);
   await send("B");                                 /* switch to beacon mode  */
   log("beacon started @ " + $('intv').value + " s"
       + (pin.length===4 ? (", password set ("+pin+")") : "")
