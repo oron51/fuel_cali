@@ -133,11 +133,19 @@ async function send(s){
   log("> " + s);
 }
 const wait = ms => new Promise(r=>setTimeout(r,ms));
+const macOf = el => (el.value||"").replace(/[^0-9a-fA-F]/g,'').toUpperCase();
+let pendingBind = null;                          /* set on Save -> auto-bind next RX connect */
+
+/* remember the TX address across sessions (works on the hosted https page).
+   Defaults to the known TX MAC so the field is ready to bind on first use. */
+try{ $('txaddr').value = localStorage.getItem('txmac') || '11899AA3EDB7'; }catch(e){ $('txaddr').value = '11899AA3EDB7'; }
+$('txaddr').addEventListener('change', ()=>{ try{ localStorage.setItem('txmac', macOf($('txaddr'))); }catch(e){} });
 
 $('btnBind').onclick = async ()=>{
-  const m = ($('txaddr').value||"").replace(/[^0-9a-fA-F]/g,'').toUpperCase();
+  const m = macOf($('txaddr'));
   if(m.length !== 12){ log("MAC must be 12 hex digits, e.g. 11899AA3EDB7"); return; }
   await send("M" + m);                  /* RX stores MAC, acks, starts scanning */
+  try{ localStorage.setItem('txmac', m); }catch(e){}
   log("bound RX to " + m);
 };
 
@@ -199,7 +207,14 @@ async function connect(rxOnly){
     chr.addEventListener('characteristicvaluechanged', onData);
     setOnline(true);
     log("connected: " + (dev.name||"device"));
-    await send("G");                    /* fetch stored points */
+    await send("G");                    /* fetch stored points / RX status */
+    if(rxOnly && pendingBind){          /* came here right after a Save -> auto-bind */
+      await wait(500);
+      await send("M" + pendingBind);
+      try{ localStorage.setItem('txmac', pendingBind); }catch(e){}
+      log("auto-bound RX to " + pendingBind);
+      pendingBind = null;
+    }
   }catch(e){ log("error: " + e.message); }
 }
 
@@ -221,9 +236,14 @@ $('btnBeacon').onclick = async ()=>{
   if(pin.length === 4){ await wait(350); await send("P" + pin); }
   await wait(350);
   await send("B");                                 /* switch to beacon mode  */
-  log("beacon started @ " + $('intv').value + " s"
-      + (pin.length===4 ? (", password set ("+pin+")") : "")
-      + " — you can disconnect");
+  const m = macOf($('txaddr'));
+  if(m.length === 12){ pendingBind = m; try{ localStorage.setItem('txmac', m); }catch(e){} }
+  log("beacon started @ " + $('intv').value + " s. Disconnecting TX…");
+  await wait(500);
+  try{ if(dev && dev.gatt.connected) dev.gatt.disconnect(); }catch(e){}
+  setOnline(false);
+  if(m.length === 12) log("Now tap CONNECT TO RX — it will auto-bind the gauge to " + m);
+  else log("Now tap CONNECT TO RX, then Bind. (Tip: put the TX address above first and it auto-binds.)");
 };
 
 if(!navigator.bluetooth){
