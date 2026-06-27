@@ -83,8 +83,14 @@
   </div>
 
   <div class="card">
-    <div class="set"><span class="muted">TX address (your record / RX bind)</span></div>
+    <div class="set"><span class="muted">RX gauge pairing</span></div>
+    <div class="row" style="margin-top:8px"><button class="b-conn" id="btnConnRx">Connect to RX</button></div>
+    <div class="set" style="margin-top:14px"><span class="muted">TX address</span></div>
     <input type="text" id="txaddr" placeholder="e.g. 11899AA3EDB7" autocomplete="off" style="width:100%">
+    <div class="row" style="margin-top:10px">
+      <button class="b-save" id="btnBind" disabled>Bind to RX</button>
+    </div>
+    <div class="hint"><b>Connect to RX</b> (the <b>FUELRX</b> unit) &mdash; it shows the TX address it's currently bound to. To change it, type the TX's 12-hex address and tap <b>Bind to RX</b>. The RX then drives the needle from that TX's broadcast.</div>
     <div class="set" style="margin-top:12px"><span class="muted">Connection password</span></div>
     <input type="tel" id="txpin" maxlength="4" inputmode="numeric" placeholder="4 digits, e.g. 1234" style="width:100%">
     <div class="hint">Optional. Locks the TX with a password + binding so only you can reconnect to recalibrate. Applied when you tap <b>Start Beacon</b>. This protects the <b>calibration connection</b> only &mdash; a scanning RX still reads the broadcast level without it.</div>
@@ -116,7 +122,8 @@ function setOnline(on){
   $('st').textContent = on ? "connected" : "offline";
   $('st').className = "pill" + (on ? " on" : "");
   $('btnConn').textContent = on ? "Disconnect" : "Connect";
-  for (const b of ['btnEmpty','btnFull','btnSave','btnBeacon']) $(b).disabled = !on;
+  $('btnConnRx').disabled = on;
+  for (const b of ['btnEmpty','btnFull','btnSave','btnBeacon','btnBind']) $(b).disabled = !on;
   if(!on){ $('cap').textContent="--"; $('pct').textContent="connect to begin"; $('fill').style.width="0"; }
 }
 
@@ -126,6 +133,13 @@ async function send(s){
   log("> " + s);
 }
 const wait = ms => new Promise(r=>setTimeout(r,ms));
+
+$('btnBind').onclick = async ()=>{
+  const m = ($('txaddr').value||"").replace(/[^0-9a-fA-F]/g,'').toUpperCase();
+  if(m.length !== 12){ log("MAC must be 12 hex digits, e.g. 11899AA3EDB7"); return; }
+  await send("M" + m);                  /* RX stores MAC, acks, starts scanning */
+  log("bound RX to " + m);
+};
 
 function showCap(cap01){               /* cap in 0.1 pF units */
   const pf = cap01/10;
@@ -153,6 +167,12 @@ function onLine(line){
     $('vEmpty').textContent = isNaN(lastEmpty)?"--":(lastEmpty/10).toFixed(1)+" pF";
     $('vFull').textContent  = isNaN(lastFull) ?"--":(lastFull /10).toFixed(1)+" pF";
     log("  stored: empty="+lastEmpty+" full="+lastFull);
+  } else if(line[0]==='M' && line.length>=13){   /* RX reply: bound to this MAC */
+    const m = line.slice(1,13).toUpperCase();
+    $('txaddr').value = m;
+    log("  RX is bound to " + m);
+  } else if(line==='U'){                          /* RX reply: not bound yet */
+    log("  RX not bound yet — enter a TX address and Bind");
   }
 }
 
@@ -162,13 +182,12 @@ function onData(ev){
   while((i = buf.search(/[\r\n]/)) >= 0){ onLine(buf.slice(0,i)); buf = buf.slice(i+1); }
 }
 
-async function connect(){
+async function connect(rxOnly){
   try{
     log("requesting device…");
     dev = await navigator.bluetooth.requestDevice({
-      /* Show only the module, by advertised name. Power-cycle the TX first so
-         it is advertising. FUELxxx = beacon name; JDY = factory default name. */
-      filters:[{namePrefix:'FUEL'},{namePrefix:'JDY'}],
+      /* rxOnly -> only the FUELRX gauge unit; otherwise the TX (FUELxxx / JDY). */
+      filters: rxOnly ? [{namePrefix:'FUELRX'}] : [{namePrefix:'FUEL'},{namePrefix:'JDY'}],
       optionalServices:[SVC]
     });
     dev.addEventListener('gattserverdisconnected', ()=>{ setOnline(false); log("disconnected"); });
@@ -189,7 +208,8 @@ async function disconnect(){
   setOnline(false);
 }
 
-$('btnConn').onclick = ()=> (dev && dev.gatt && dev.gatt.connected) ? disconnect() : connect();
+$('btnConn').onclick   = ()=> (dev && dev.gatt && dev.gatt.connected) ? disconnect() : connect(false);
+$('btnConnRx').onclick = ()=> (dev && dev.gatt && dev.gatt.connected) ? disconnect() : connect(true);
 $('btnEmpty').onclick = ()=> send("E");
 $('btnFull').onclick  = ()=> send("F");
 $('btnSave').onclick   = async ()=>{ await send("RUN"); log("saved — RX can be powered on"); };
