@@ -37,6 +37,9 @@
   .b-empty{background:#5b6573}
   .b-full{background:#5b6573}
   .b-save{background:var(--accent)}
+  .seg{display:flex;gap:6px;margin-top:8px}
+  .seg button{flex:1;padding:12px 4px;font-size:14px;background:#2a323d;color:var(--dim);border-radius:10px}
+  .seg button.sel{background:var(--accent2);color:#fff;font-weight:700}
   .b-stop{background:#2a323d}
   .set{display:flex;justify-content:space-between;font-size:14px;padding:7px 2px;
     border-top:1px solid var(--line)}
@@ -105,8 +108,14 @@
 
   <div class="card">
     <div class="set"><span class="muted">Beacon update interval</span><b><span id="intvLbl">60</span> s</b></div>
-    <input type="range" id="intv" min="20" max="300" step="10" value="60" style="width:100%">
-    <div class="hint">How often the in-tank unit wakes, measures, and broadcasts. Longer = longer battery life, slower updates. 20&ndash;300&nbsp;s.</div>
+    <div class="seg" id="intvSeg">
+      <button type="button" data-s="2">2 s</button>
+      <button type="button" data-s="20">20 s</button>
+      <button type="button" data-s="60">60 s</button>
+      <button type="button" data-s="120">120 s</button>
+    </div>
+    <input type="hidden" id="intv" value="60">
+    <div class="hint">How often the in-tank unit wakes, measures, and broadcasts. Longer = longer battery life, slower updates. 2&nbsp;s is handy for bench testing; 60&ndash;120&nbsp;s for normal use.</div>
     <div class="row" style="margin-top:12px">
       <button class="b-save" id="btnBeacon" disabled>Save &amp; Start Beacon</button>
     </div>
@@ -248,7 +257,13 @@ $('btnEmpty').onclick = ()=> send("E");
 $('btnFull').onclick  = ()=> send("F");
 $('btnSave').onclick   = async ()=>{ await send("RUN"); log("saved — RX can be powered on"); };
 
-$('intv').oninput = ()=> $('intvLbl').textContent = $('intv').value;
+function selInterval(s){
+  $('intv').value = s;
+  $('intvLbl').textContent = s;
+  for(const b of $('intvSeg').children) b.classList.toggle('sel', b.dataset.s === String(s));
+}
+for(const b of $('intvSeg').children) b.onclick = ()=> selInterval(b.dataset.s);
+selInterval(60);                                   /* default */
 $('btnBeacon').onclick = async ()=>{
   await send("I" + $('intv').value);               /* set interval (seconds) */
   const pin = ($('txpin').value||"").replace(/\D/g,'').slice(0,4);
