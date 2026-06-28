@@ -50,6 +50,12 @@
   .pill{display:inline-block;font-size:11px;padding:2px 8px;border-radius:999px;
     background:#2a323d;color:var(--dim);margin-left:8px;vertical-align:middle}
   .pill.on{background:rgba(52,199,89,.18);color:var(--accent)}
+  .pill.rx{background:rgba(10,132,255,.20);color:#4aa3ff}
+  .rxbanner{display:none;margin-top:12px;padding:10px 12px;border-radius:10px;
+    font-size:13px;font-weight:600;text-align:center;border:1px solid transparent}
+  .rxbanner.show{display:block}
+  .rxbanner.ok{background:rgba(52,199,89,.16);color:#34c759;border-color:rgba(52,199,89,.45)}
+  .rxbanner.wait{background:rgba(10,132,255,.14);color:#4aa3ff;border-color:rgba(10,132,255,.40)}
 </style>
 </head>
 <body>
@@ -90,6 +96,7 @@
     <div class="row" style="margin-top:10px">
       <button class="b-save" id="btnBind" disabled>Bind to RX</button>
     </div>
+    <div id="rxbanner" class="rxbanner"></div>
     <div class="hint"><b>Connect to RX</b> (the <b>FUELRX</b> unit) &mdash; it shows the TX address it's currently bound to. To change it, type the TX's 12-hex address and tap <b>Bind to RX</b>. The RX then drives the needle from that TX's broadcast.</div>
     <div class="set" style="margin-top:12px"><span class="muted">Connection password</span></div>
     <input type="tel" id="txpin" maxlength="4" inputmode="numeric" placeholder="4 digits, e.g. 1234" style="width:100%">
@@ -118,9 +125,15 @@ const $ = id => document.getElementById(id);
 const log = m => { const l=$('log'); l.textContent += m+"\n"; l.scrollTop = l.scrollHeight; };
 const enc = new TextEncoder(), dec = new TextDecoder();
 
-function setOnline(on){
-  $('st').textContent = on ? "connected" : "offline";
-  $('st').className = "pill" + (on ? " on" : "");
+function rxBanner(state, text){    /* state: 'ok' | 'wait' | '' (hide) */
+  const b = $('rxbanner');
+  b.className = "rxbanner" + (state ? (" show " + state) : "");
+  b.textContent = text || "";
+}
+function setOnline(on, kind){
+  const rx = (kind === 'rx');
+  $('st').textContent = on ? (rx ? "RX connected" : "connected") : "offline";
+  $('st').className = "pill" + (on ? (rx ? " rx" : " on") : "");
   $('btnConn').textContent = on ? "Disconnect" : "Connect";
   $('btnConnRx').disabled = on;
   for (const b of ['btnEmpty','btnFull','btnSave','btnBeacon','btnBind']) $(b).disabled = !on;
@@ -144,8 +157,10 @@ $('txaddr').addEventListener('change', ()=>{ try{ localStorage.setItem('txmac', 
 $('btnBind').onclick = async ()=>{
   const m = macOf($('txaddr'));
   if(m.length !== 12){ log("MAC must be 12 hex digits, e.g. 11899AA3EDB7"); return; }
+  rxBanner('wait', "binding to " + m + " …");
   await send("M" + m);                  /* RX stores MAC, acks, starts scanning */
   try{ localStorage.setItem('txmac', m); }catch(e){}
+  rxBanner('ok', "✓ Gauge bound to " + m);
   log("bound RX to " + m);
 };
 
@@ -178,8 +193,10 @@ function onLine(line){
   } else if(line[0]==='M' && line.length>=13){   /* RX reply: bound to this MAC */
     const m = line.slice(1,13).toUpperCase();
     $('txaddr').value = m;
+    rxBanner('ok', "✓ Gauge bound to " + m);
     log("  RX is bound to " + m);
   } else if(line==='U'){                          /* RX reply: not bound yet */
+    rxBanner('wait', "RX not bound yet — tap Bind to RX");
     log("  RX not bound yet — enter a TX address and Bind");
   }
 }
@@ -205,14 +222,16 @@ async function connect(rxOnly){
     chr = await s.getCharacteristic(CHR);
     await chr.startNotifications();
     chr.addEventListener('characteristicvaluechanged', onData);
-    setOnline(true);
+    setOnline(true, rxOnly ? 'rx' : 'tx');
     log("connected: " + (dev.name||"device"));
+    if(rxOnly) rxBanner('wait', "RX connected — reading binding…");
     await send("G");                    /* fetch stored points / RX status */
     if(rxOnly && pendingBind){          /* came here right after a Save -> auto-bind */
       await wait(500);
       await send("M" + pendingBind);
       try{ localStorage.setItem('txmac', pendingBind); }catch(e){}
       log("auto-bound RX to " + pendingBind);
+      rxBanner('ok', "✓ Gauge bound to " + pendingBind);
       pendingBind = null;
     }
   }catch(e){ log("error: " + e.message); }
