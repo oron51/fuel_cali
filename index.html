@@ -63,7 +63,7 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Fuel Sensor Calibration <span id="st" class="pill">offline</span></h1>
+  <h1>Fuel Sensor Calibration <span id="st" class="pill">offline</span> <span class="pill">v2.1</span></h1>
   <div class="sub">Power off the RX first &mdash; only one BLE link at a time.</div>
 
   <div class="card">
@@ -253,9 +253,9 @@ async function disconnect(){
 
 $('btnConn').onclick   = ()=> (dev && dev.gatt && dev.gatt.connected) ? disconnect() : connect(false);
 $('btnConnRx').onclick = ()=> (dev && dev.gatt && dev.gatt.connected) ? disconnect() : connect(true);
-$('btnEmpty').onclick = ()=> send("E");
-$('btnFull').onclick  = ()=> send("F");
-$('btnSave').onclick   = async ()=>{ await send("RUN"); log("saved — RX can be powered on"); };
+$('btnEmpty').onclick = async ()=>{ log("tap: Set Empty"); try{ await send("E"); }catch(e){ log("send failed: "+e.message); } };
+$('btnFull').onclick  = async ()=>{ log("tap: Set Full");  try{ await send("F"); }catch(e){ log("send failed: "+e.message); } };
+$('btnSave').onclick   = async ()=>{ log("tap: Save");     try{ await send("RUN"); log("saved — RX can be powered on"); }catch(e){ log("send failed: "+e.message); } };
 
 function selInterval(s){
   $('intv').value = s;
